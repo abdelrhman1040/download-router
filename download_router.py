@@ -24,6 +24,7 @@ import time
 import traceback
 import uuid
 import urllib.request
+import webbrowser
 import tkinter as tk
 import tkinter.font as tkfont
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,7 +33,7 @@ from tkinter import filedialog, messagebox, ttk
 from urllib.parse import urlparse
 
 APP_NAME = "Download Router"
-APP_VERSION = "0.95"
+APP_VERSION = "1.0"
 APP_AUTHOR = "Abdelrahman Alaa"
 
 # PyInstaller --noconsole leaves sys.stdout/sys.stderr as None; make them safe.
@@ -376,8 +377,8 @@ def resolve_folder(sc, ctx):
 
 
 def folder_for(sc, ctx):
-    """Like resolve_folder, but sub-folders only apply if the shortcut matches this file."""
-    return resolve_folder(sc, ctx) if shortcut_matches(sc, ctx) else sc["folder"]
+    """Always apply sub-folder rules based on filename, even on manual click."""
+    return resolve_folder(sc, ctx)
 
 
 def wants_open(shortcuts, ctx, dest):
@@ -1030,7 +1031,8 @@ class DownloadPopup:
                 ttk.Label(body, text="No shortcuts yet. Open settings (\u2699) to add one.",
                           style="Muted.TLabel").pack(anchor="w", pady=4)
             for sc in everything:
-                self._item(body, sc["name"], sc["folder"], sc["folder"])
+                dest = resolve_folder(sc, self.ctx)
+                self._item(body, sc["name"], dest, dest)
                 
         if not shown:
             ttk.Label(body, text="No suggestions. Use Browse\u2026 to pick a folder.",
@@ -1091,8 +1093,158 @@ def ask_folder(root, theme, data):
 
 
 # ===========================================================================
-# 7. Settings window
+# 7. Settings & Export/Import Windows
 # ===========================================================================
+
+class ExportWindow:
+    def __init__(self, owner):
+        self.owner = owner
+        self.theme = owner.theme
+        self.win = tk.Toplevel(owner.win)
+        self.win.title("Export Shortcuts")
+        self.win.geometry("450x550")
+        self.win.transient(owner.win)
+        self.win.grab_set()
+        self.theme.register(self.win)
+
+        self.shortcuts = load_config().get("shortcuts", [])
+        self.vars = {}
+
+        body = ttk.Frame(self.win, padding=14)
+        body.pack(fill="both", expand=True)
+
+        ttk.Label(body, text="Select shortcuts to export:", style="Title.TLabel").pack(anchor="w", pady=(0, 10))
+
+        scroll = ScrollFrame(body, self.theme)
+        scroll.pack(fill="both", expand=True)
+
+        if not self.shortcuts:
+            ttk.Label(scroll.inner, text="No shortcuts available to export.", style="Muted.TLabel").pack(anchor="w", pady=4)
+        else:
+            for sc in self.shortcuts:
+                var = tk.BooleanVar(value=True)
+                self.vars[sc["id"]] = var
+                cb = ttk.Checkbutton(scroll.inner, text=sc["name"], variable=var)
+                cb.pack(anchor="w", pady=4, padx=4)
+
+        foot = ttk.Frame(body)
+        foot.pack(fill="x", side="bottom", pady=(10, 0))
+
+        ttk.Button(foot, text="Cancel", command=self.close).pack(side="right", padx=(8, 0))
+        ttk.Button(foot, text="Export Selected", style="Accent.TButton", command=self.do_export).pack(side="right")
+
+        self.win.protocol("WM_DELETE_WINDOW", self.close)
+
+    def close(self):
+        self.theme.unregister(self.win)
+        self.win.destroy()
+
+    def do_export(self):
+        selected = [sc for sc in self.shortcuts if self.vars.get(sc["id"]) and self.vars[sc["id"]].get()]
+        if not selected:
+            messagebox.showwarning("Export", "No shortcuts selected.", parent=self.win)
+            return
+
+        path = filedialog.asksaveasfilename(
+            parent=self.win,
+            defaultextension=".json",
+            filetypes=[("JSON Files", "*.json")],
+            title="Save Shortcuts"
+        )
+        if path:
+            try:
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(selected, f, ensure_ascii=False, indent=2)
+                messagebox.showinfo("Success", f"Exported {len(selected)} shortcuts successfully.", parent=self.win)
+                self.close()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save file:\n{e}", parent=self.win)
+
+
+class ImportWindow:
+    def __init__(self, owner, file_path):
+        self.owner = owner
+        self.theme = owner.theme
+        self.win = tk.Toplevel(owner.win)
+        self.win.title("Import Shortcuts")
+        self.win.geometry("450x550")
+        self.win.transient(owner.win)
+        self.win.grab_set()
+        self.theme.register(self.win)
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if not isinstance(data, list):
+                raise ValueError("File does not contain a list of shortcuts.")
+            self.imported = [_normalize_shortcut(s) for s in data if _normalize_shortcut(s)]
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to read file:\n{e}", parent=owner.win)
+            self.close()
+            return
+
+        if not self.imported:
+            messagebox.showinfo("Import", "No valid shortcuts found in the file.", parent=owner.win)
+            self.close()
+            return
+
+        self.existing_config = load_config()
+        self.existing_names = {s["name"].lower(): s for s in self.existing_config.get("shortcuts", [])}
+        self.vars = {}
+
+        body = ttk.Frame(self.win, padding=14)
+        body.pack(fill="both", expand=True)
+
+        ttk.Label(body, text="Select shortcuts to import:", style="Title.TLabel").pack(anchor="w", pady=(0, 10))
+
+        scroll = ScrollFrame(body, self.theme)
+        scroll.pack(fill="both", expand=True)
+
+        for i, sc in enumerate(self.imported):
+            var = tk.BooleanVar(value=True)
+            self.vars[i] = var
+            conflict = sc["name"].lower() in self.existing_names
+            
+            frame = ttk.Frame(scroll.inner)
+            frame.pack(fill="x", pady=2, padx=4)
+            
+            cb = ttk.Checkbutton(frame, text=sc["name"], variable=var)
+            cb.pack(side="left")
+            
+            if conflict:
+                ttk.Label(frame, text=" (Will overwrite existing)", style="Error.TLabel").pack(side="left")
+
+        foot = ttk.Frame(body)
+        foot.pack(fill="x", side="bottom", pady=(10, 0))
+
+        ttk.Button(foot, text="Cancel", command=self.close).pack(side="right", padx=(8, 0))
+        ttk.Button(foot, text="Import Selected", style="Accent.TButton", command=self.do_import).pack(side="right")
+
+        self.win.protocol("WM_DELETE_WINDOW", self.close)
+
+    def close(self):
+        self.theme.unregister(self.win)
+        self.win.destroy()
+
+    def do_import(self):
+        selected = [sc for i, sc in enumerate(self.imported) if self.vars[i].get()]
+        if not selected:
+            messagebox.showwarning("Import", "No shortcuts selected.", parent=self.win)
+            return
+
+        def mutate(cfg):
+            for sc in selected:
+                # Remove existing shortcut with the same name
+                cfg["shortcuts"] = [s for s in cfg["shortcuts"] if s["name"].lower() != sc["name"].lower()]
+                # Generate a new ID to avoid duplicates if exporting/importing same file
+                sc["id"] = uuid.uuid4().hex 
+                cfg["shortcuts"].append(sc)
+
+        update_config(mutate)
+        messagebox.showinfo("Success", f"Imported {len(selected)} shortcuts successfully.", parent=self.win)
+        self.owner.show_list()
+        self.close()
+
 
 class SettingsWindow:
     def __init__(self, root, theme, on_close=None):
@@ -1129,6 +1281,18 @@ class SettingsWindow:
         elif self.editor:
             self.editor.on_theme()
 
+    def open_export(self):
+        ExportWindow(self)
+
+    def open_import(self):
+        path = filedialog.askopenfilename(
+            parent=self.win,
+            title="Select Shortcuts File",
+            filetypes=[("JSON Files", "*.json")]
+        )
+        if path:
+            ImportWindow(self, path)
+
     def _fresh_body(self):
         if self.body is not None:
             self.body.destroy()
@@ -1152,6 +1316,12 @@ class SettingsWindow:
         ttk.Label(body, text="Shortcuts appear in the download window when their conditions match.",
                   style="Muted.TLabel").pack(anchor="w", pady=(2, 8))
 
+        info_lbl = tk.Label(body, text="%s v%s  \u2022  by %s" % (APP_NAME, APP_VERSION, APP_AUTHOR),
+                            fg=t.p["accent"], bg=t.p["bg"], cursor="hand2", font=t.font_small)
+        info_lbl.pack(side="bottom", fill="x", pady=(5, 5))
+        info_lbl.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/abdelrhman1040/download-router"))
+        Tooltip(info_lbl, "Open project repository on GitHub", t)
+
         foot = ttk.Frame(body)
         foot.pack(side="bottom", fill="x", pady=(10, 0))
         
@@ -1159,10 +1329,16 @@ class SettingsWindow:
                              command=lambda: self.show_editor(None))
         add_btn.pack(side="left")
         Tooltip(add_btn, "Create a new shortcut", t)
-        
+
+        export_btn = ttk.Button(foot, text="Export", command=self.open_export)
+        export_btn.pack(side="left", padx=(8, 0))
+        Tooltip(export_btn, "Export specific shortcuts to a file", t)
+
+        import_btn = ttk.Button(foot, text="Import", command=self.open_import)
+        import_btn.pack(side="left", padx=(4, 0))
+        Tooltip(import_btn, "Import shortcuts from a file", t)
+
         ttk.Button(foot, text="Close", command=self.close).pack(side="right")
-        ttk.Label(foot, text="%s v%s  \u2022  by %s" % (APP_NAME, APP_VERSION, APP_AUTHOR),
-                  style="Muted.TLabel", anchor="center").pack(side="left", fill="x", expand=True)
 
         scroll = ScrollFrame(body, t)
         scroll.pack(fill="both", expand=True)
