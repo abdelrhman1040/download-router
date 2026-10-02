@@ -11,7 +11,7 @@ The program is a "portable version" and does not require traditional installatio
 1. Move the `download_router.exe` file to any safe folder on your PC (such as `C:\DownloadRouter`).
 2. Install the extension in Google Chrome:
    - Open the extensions page: `chrome://extensions/`
-   <img width="1920" height="1080" alt="Screenshot 2026-10-02 134141" src="https://github.com/user-attachments/assets/58fb218a-c667-447d-b74a-14d67fad3df2" />
+     <img width="1920" height="1080" alt="Screenshot 2026-10-02 134141" src="https://github.com/user-attachments/assets/58fb218a-c667-447d-b74a-14d67fad3df2" />
 
    - Enable Developer mode.
      <img width="1920" height="1080" alt="Screenshot 2026-10-02 134209" src="https://github.com/user-attachments/assets/a6325096-3f24-4618-b65c-a19d147d247f" />
