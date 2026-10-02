@@ -11,9 +11,17 @@ The program is a "portable version" and does not require traditional installatio
 1. Move the `download_router.exe` file to any safe folder on your PC (such as `C:\DownloadRouter`).
 2. Install the extension in Google Chrome:
    - Open the extensions page: `chrome://extensions/`
+   <img width="1920" height="1080" alt="Screenshot 2026-10-02 134141" src="https://github.com/user-attachments/assets/58fb218a-c667-447d-b74a-14d67fad3df2" />
+
    - Enable Developer mode.
+     <img width="1920" height="1080" alt="Screenshot 2026-10-02 134209" src="https://github.com/user-attachments/assets/a6325096-3f24-4618-b65c-a19d147d247f" />
+
    - Click "Load unpacked" and select the folder containing the `manifest.json` and `background.js` files.
+     <img width="1920" height="1080" alt="Screenshot 2026-10-02 134216" src="https://github.com/user-attachments/assets/17764038-ff55-414e-80d0-4f2339d5e0f8" />
+     <img width="941" height="635" alt="Screenshot 2026-10-02 134251" src="https://github.com/user-attachments/assets/e7892dcd-42cd-4118-b21c-73274c758c05" />
+
 3. Open the `download_router.exe` file once to start running in the background.
+<img width="907" height="170" alt="image" src="https://github.com/user-attachments/assets/8dc11501-efc1-43e9-b40c-54ee2186402e" />
 
 ## 3. Run on Windows Startup (Optional)
 
